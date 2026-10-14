@@ -1,0 +1,32 @@
+{
+  "name": "africair",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.23.0",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "dev:api": "pnpm --filter @africair/api dev",
+    "build": "tsc -b && vite build",
+    "build:api": "pnpm --filter @africair/api build",
+    "check": "tsc -b && pnpm --filter @africair/api exec tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "data:airports": "node scripts/build-airports.mjs"
+  },
+  "dependencies": {
+    "jspdf": "^2.5.2",
+    "lucide-react": "^0.468.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.0",
+    "@types/react": "^19.0.10",
+    "@types/react-dom": "^19.0.4",
+    "@vitejs/plugin-react": "^4.4.1",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.11",
+    "vitest": "^3.2.7"
+  }
+}
