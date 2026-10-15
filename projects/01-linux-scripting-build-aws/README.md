@@ -69,6 +69,48 @@ Write `scripts/ops/bootstrap.sh`. It must:
 - configure `ufw` to allow only OpenSSH, 80 and 443;
 - be **idempotent**: a second run must change nothing and exit 0. Prove it by showing the output of two consecutive runs.
 
+The starter implementation is [scripts/ops/bootstrap.sh](../../scripts/ops/bootstrap.sh).
+Run it on the Ubuntu EC2 server, not on your Windows computer. It installs
+packages and enables UFW. It assumes SSH uses the standard port 22; keep that
+port allowed in the EC2 security group and keep your current SSH session open.
+Existing UFW allow rules are preserved: inspect `sudo ufw status numbered` and
+remove unwanted rules separately if the server is not fresh.
+
+From Git Bash on your Windows computer, copy the script (adjust the key path):
+
+```bash
+cd ~/Downloads/AFRIC_AIR/AfricAir
+scp -i ~/Downloads/africair.pem scripts/ops/bootstrap.sh ubuntu@ec2-13-217-219-244.compute-1.amazonaws.com:~/bootstrap.sh
+ssh -i ~/Downloads/africair.pem ubuntu@ec2-13-217-219-244.compute-1.amazonaws.com
+```
+
+Then, inside the SSH session:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y shellcheck
+sed -i 's/\r$//' ~/bootstrap.sh
+shellcheck ~/bootstrap.sh
+chmod +x ~/bootstrap.sh
+set -o pipefail
+sudo ~/bootstrap.sh 2>&1 | tee ~/bootstrap-first.log
+echo "First run exit code: $?" | tee -a ~/bootstrap-first.log
+sudo ~/bootstrap.sh 2>&1 | tee ~/bootstrap-second.log
+echo "Second run exit code: $?" | tee -a ~/bootstrap-second.log
+sudo ufw status verbose
+node --version
+```
+
+Stop and investigate if either exit code is not `0`. Save both logs as evidence.
+Shell scripts must use LF line endings. The repository's `.gitattributes` enforces
+this for Git checkouts; the `sed` command also repairs an existing CRLF copy on EC2
+if ShellCheck reports SC1017.
+The repeatability checks prevent duplicate users, directories and firewall rules.
+However, `apt-get update` refreshes package indexes and `apt-get install` can
+upgrade packages, so this starter does not guarantee literally zero changes on
+every subsequent run. It prepares the server only; deployment creates the
+`current` symlink and configures the application later.
+
 ### B3. `build.sh` — a reproducible build artifact
 
 `scripts/ops/build.sh <git-ref>` must:
