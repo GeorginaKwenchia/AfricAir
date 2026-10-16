@@ -257,6 +257,33 @@ sudo journalctl -t africair-health --since "10 min ago"
 
 Generate traffic first: run the e2e suite against your server a few times, and `curl` some 404s.
 
+Run the report on Ubuntu:
+
+```bash
+sudo bash scripts/ops/report.sh
+bash scripts/ops/report.sh /path/to/copied-access.json
+bash scripts/ops/report.test.sh
+```
+
+The first three sections cover the entire file. The per-minute section filters
+timestamps to the preceding 3600 seconds before grouping them, converts nginx
+timezone offsets to UTC, and excludes future timestamps. Minutes without requests
+are omitted; the last 60 populated minutes are not necessarily the last hour.
+Malformed JSON or timestamps cause a nonzero exit instead of silently dropping
+bad records.
+
+Generate requests with the browser or run the existing end-to-end suite:
+
+```bash
+curl -i http://localhost/nope
+pnpm exec playwright install --with-deps chromium
+BASE_URL=http://localhost pnpm test:e2e
+```
+
+Replace `localhost` with the server address when generating traffic remotely.
+The SPA fallback means `/nope` normally returns `index.html` with status 200.
+Use `/assets/nonexistent.js` to generate a genuine 404 with this nginx config.
+
 ### B8. Run the API with systemd, environment files and credentials
 
 The site is more than static files: the API in `server/` changes what users see, based on environment variables and secrets. Run it on the same server.
