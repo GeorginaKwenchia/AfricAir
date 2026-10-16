@@ -121,6 +121,10 @@ every subsequent run. It prepares the server only; deployment creates the
 4. package the build as `africair-<shortsha>.tar.gz` plus a `.sha256` checksum file;
 5. exit with **distinct exit codes**: 10 for checkout failure, 20 for install, 30 for tests, 40 for build. Document them in the script's `--help` output.
 
+The same build also produces `africair-api-<shortsha>.tar.gz` and its checksum.
+It contains `server/dist`, `server/migrations`, `server/package.json`, and
+production-only dependencies so the API can run without the build toolchain.
+
 ### B4. `deploy.sh` and `rollback.sh` — zero-downtime releases
 
 `scripts/ops/deploy.sh <artifact.tar.gz>` must:
