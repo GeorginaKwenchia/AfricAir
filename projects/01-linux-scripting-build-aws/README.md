@@ -121,10 +121,6 @@ every subsequent run. It prepares the server only; deployment creates the
 4. package the build as `africair-<shortsha>.tar.gz` plus a `.sha256` checksum file;
 5. exit with **distinct exit codes**: 10 for checkout failure, 20 for install, 30 for tests, 40 for build. Document them in the script's `--help` output.
 
-The same build also produces `africair-api-<shortsha>.tar.gz` and its checksum.
-It contains `server/dist`, `server/migrations`, `server/package.json`, and
-production-only dependencies so the API can run without the build toolchain.
-
 ### B4. `deploy.sh` and `rollback.sh` — zero-downtime releases
 
 `scripts/ops/deploy.sh <artifact.tar.gz>` must:
@@ -136,12 +132,7 @@ production-only dependencies so the API can run without the build toolchain.
 5. `curl` `/healthz` and `/version.json`. If the commit doesn't match, **roll back automatically** and exit non-zero;
 6. keep only the 5 most recent releases.
 
-Run `sudo scripts/ops/deploy.sh africair-<shortsha>.tar.gz` to deploy an artifact;
-the matching `.sha256` file must be next to it. The script validates the checksum
-before changing releases. Run `sudo scripts/ops/rollback.sh` to atomically switch
-to the previous release and reload nginx. Both scripts restore the previous link
-if nginx validation or reload fails; deploy also restores it if health/version
-verification fails.
+`scripts/ops/rollback.sh` switches `current` back to the previous release in one command.
 
 ### B5. nginx configuration
 
@@ -156,40 +147,6 @@ Write `/etc/nginx/sites-available/africair` (commit a copy to `deploy/nginx/afri
 - an access log in **JSON format** written to `/var/log/nginx/africair.access.json`;
 - a `logrotate` rule: daily, keep 14, compress.
 
-From the repository root on Ubuntu, install the committed configuration:
-
-```bash
-sudo install -m 0644 deploy/nginx/africair.conf /etc/nginx/sites-available/africair
-sudo ln -sfn /etc/nginx/sites-available/africair /etc/nginx/sites-enabled/africair
-sudo rm -f /etc/nginx/sites-enabled/default
-sudo nginx -t && sudo systemctl reload nginx
-sudo install -m 0644 deploy/logrotate/africair /etc/logrotate.d/africair
-sudo logrotate --debug /etc/logrotate.d/africair
-```
-
-The site file defines `log_format` outside the `server` block; Ubuntu includes
-`sites-enabled/*` within nginx's `http` context. Security headers are repeated
-in locations that set cache headers because those locations do not inherit the
-server's `add_header` directives. Missing assets and missing version metadata
-return 404 instead of the SPA HTML. This configuration serves the static site;
-API proxying is configured separately in B8.
-
-After deploying a web artifact, verify the running site:
-
-```bash
-curl -fsS http://localhost/healthz
-curl -fsSI http://localhost/
-curl -fsSI http://localhost/index.html
-curl -fsSI http://localhost/version.json
-curl -fsS http://localhost/version.json | jq .commit
-sudo tail -n 1 /var/log/nginx/africair.access.json | jq .
-```
-
-Check an actual `/assets/` URL from the page source for immutable caching and
-all four security headers. In browser DevTools, check for CSP violations while
-loading Google Fonts and downloading a booking PDF. Port 80 must also be allowed
-in the EC2 security group for access using the instance's public IP.
-
 **Stretch:** HTTPS with Let's Encrypt (`certbot --nginx`) on a domain or a free `nip.io`/`sslip.io` hostname.
 
 ### B6. Health monitoring with systemd
@@ -198,53 +155,6 @@ in the EC2 security group for access using the instance's public IP.
 - It logs to journald (`logger -t africair-health`).
 - After **3 consecutive failures** it reloads nginx and writes a `WARNING` entry. Keep the failure count in a state file under `/var/lib/africair/`.
 - Show `systemctl list-timers` and `journalctl -t africair-health --since "10 min ago"`.
-
-Install from the repository root on Ubuntu:
-
-```bash
-sudo install -d -m 0755 /opt/africair/shared
-sudo install -o root -g root -m 0755 scripts/ops/healthcheck.sh /opt/africair/shared/healthcheck.sh
-sudo install -m 0644 deploy/systemd/africair-health.service /etc/systemd/system/africair-health.service
-sudo install -m 0644 deploy/systemd/africair-health.timer /etc/systemd/system/africair-health.timer
-sudo systemd-analyze verify /etc/systemd/system/africair-health.service /etc/systemd/system/africair-health.timer
-sudo systemctl daemon-reload
-sudo systemctl enable --now africair-health.timer
-sudo systemctl start africair-health.service
-systemctl list-timers africair-health.timer
-sudo journalctl -t africair-health --since "10 min ago"
-```
-
-The service runs as root to reload nginx and uses systemd's `StateDirectory` to
-create `/var/lib/africair`. A successful check writes `0` to `failcount` and logs
-`OK`. Failed checks exit nonzero and increment the counter. On the third and each
-subsequent failure, the script logs a warning and attempts `systemctl reload
-nginx`; only a successful health check resets the counter. Reload errors are
-logged explicitly. The timer continues running even when the oneshot service
-reports a failed check.
-
-Run the isolated script tests without touching nginx or production state:
-
-```bash
-bash scripts/ops/healthcheck.test.sh
-```
-
-On a disposable test instance, stop nginx and wait about three minutes:
-
-```bash
-sudo systemctl stop nginx
-sudo journalctl -f -t africair-health
-```
-
-Use Ctrl+C to leave the log view. A stopped nginx cannot be recovered with
-`reload`; expect warning and reload-error entries, not an automatic restart.
-Restore it explicitly, then check that the next probe resets the counter:
-
-```bash
-sudo systemctl start nginx
-sudo systemctl start africair-health.service
-sudo cat /var/lib/africair/failcount
-sudo journalctl -t africair-health --since "10 min ago"
-```
 
 ### B7. Log analysis
 
@@ -256,33 +166,6 @@ sudo journalctl -t africair-health --since "10 min ago"
 - requests per minute for the last hour.
 
 Generate traffic first: run the e2e suite against your server a few times, and `curl` some 404s.
-
-Run the report on Ubuntu:
-
-```bash
-sudo bash scripts/ops/report.sh
-bash scripts/ops/report.sh /path/to/copied-access.json
-bash scripts/ops/report.test.sh
-```
-
-The first three sections cover the entire file. The per-minute section filters
-timestamps to the preceding 3600 seconds before grouping them, converts nginx
-timezone offsets to UTC, and excludes future timestamps. Minutes without requests
-are omitted; the last 60 populated minutes are not necessarily the last hour.
-Malformed JSON or timestamps cause a nonzero exit instead of silently dropping
-bad records.
-
-Generate requests with the browser or run the existing end-to-end suite:
-
-```bash
-curl -i http://localhost/nope
-pnpm exec playwright install --with-deps chromium
-BASE_URL=http://localhost pnpm test:e2e
-```
-
-Replace `localhost` with the server address when generating traffic remotely.
-The SPA fallback means `/nope` normally returns `index.html` with status 200.
-Use `/assets/nonexistent.js` to generate a genuine 404 with this nginx config.
 
 ### B8. Run the API with systemd, environment files and credentials
 
