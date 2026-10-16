@@ -199,6 +199,53 @@ in the EC2 security group for access using the instance's public IP.
 - After **3 consecutive failures** it reloads nginx and writes a `WARNING` entry. Keep the failure count in a state file under `/var/lib/africair/`.
 - Show `systemctl list-timers` and `journalctl -t africair-health --since "10 min ago"`.
 
+Install from the repository root on Ubuntu:
+
+```bash
+sudo install -d -m 0755 /opt/africair/shared
+sudo install -o root -g root -m 0755 scripts/ops/healthcheck.sh /opt/africair/shared/healthcheck.sh
+sudo install -m 0644 deploy/systemd/africair-health.service /etc/systemd/system/africair-health.service
+sudo install -m 0644 deploy/systemd/africair-health.timer /etc/systemd/system/africair-health.timer
+sudo systemd-analyze verify /etc/systemd/system/africair-health.service /etc/systemd/system/africair-health.timer
+sudo systemctl daemon-reload
+sudo systemctl enable --now africair-health.timer
+sudo systemctl start africair-health.service
+systemctl list-timers africair-health.timer
+sudo journalctl -t africair-health --since "10 min ago"
+```
+
+The service runs as root to reload nginx and uses systemd's `StateDirectory` to
+create `/var/lib/africair`. A successful check writes `0` to `failcount` and logs
+`OK`. Failed checks exit nonzero and increment the counter. On the third and each
+subsequent failure, the script logs a warning and attempts `systemctl reload
+nginx`; only a successful health check resets the counter. Reload errors are
+logged explicitly. The timer continues running even when the oneshot service
+reports a failed check.
+
+Run the isolated script tests without touching nginx or production state:
+
+```bash
+bash scripts/ops/healthcheck.test.sh
+```
+
+On a disposable test instance, stop nginx and wait about three minutes:
+
+```bash
+sudo systemctl stop nginx
+sudo journalctl -f -t africair-health
+```
+
+Use Ctrl+C to leave the log view. A stopped nginx cannot be recovered with
+`reload`; expect warning and reload-error entries, not an automatic restart.
+Restore it explicitly, then check that the next probe resets the counter:
+
+```bash
+sudo systemctl start nginx
+sudo systemctl start africair-health.service
+sudo cat /var/lib/africair/failcount
+sudo journalctl -t africair-health --since "10 min ago"
+```
+
 ### B7. Log analysis
 
 `scripts/ops/report.sh [logfile]` prints, from the JSON access log, using `jq`, `awk`, `sort` and `uniq` only:

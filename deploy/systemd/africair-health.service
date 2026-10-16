@@ -1,0 +1,15 @@
+[Unit]
+Description=AfricAir health check
+After=network.target nginx.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/africair/shared/healthcheck.sh
+StateDirectory=africair
+StateDirectoryMode=0750
+UMask=0027
+TimeoutStartSec=30
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+PrivateTmp=true
