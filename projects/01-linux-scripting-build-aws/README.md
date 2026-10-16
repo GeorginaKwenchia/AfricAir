@@ -136,7 +136,12 @@ production-only dependencies so the API can run without the build toolchain.
 5. `curl` `/healthz` and `/version.json`. If the commit doesn't match, **roll back automatically** and exit non-zero;
 6. keep only the 5 most recent releases.
 
-`scripts/ops/rollback.sh` switches `current` back to the previous release in one command.
+Run `sudo scripts/ops/deploy.sh africair-<shortsha>.tar.gz` to deploy an artifact;
+the matching `.sha256` file must be next to it. The script validates the checksum
+before changing releases. Run `sudo scripts/ops/rollback.sh` to atomically switch
+to the previous release and reload nginx. Both scripts restore the previous link
+if nginx validation or reload fails; deploy also restores it if health/version
+verification fails.
 
 ### B5. nginx configuration
 
