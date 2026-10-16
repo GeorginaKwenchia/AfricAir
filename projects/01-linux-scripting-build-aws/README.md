@@ -156,6 +156,40 @@ Write `/etc/nginx/sites-available/africair` (commit a copy to `deploy/nginx/afri
 - an access log in **JSON format** written to `/var/log/nginx/africair.access.json`;
 - a `logrotate` rule: daily, keep 14, compress.
 
+From the repository root on Ubuntu, install the committed configuration:
+
+```bash
+sudo install -m 0644 deploy/nginx/africair.conf /etc/nginx/sites-available/africair
+sudo ln -sfn /etc/nginx/sites-available/africair /etc/nginx/sites-enabled/africair
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo nginx -t && sudo systemctl reload nginx
+sudo install -m 0644 deploy/logrotate/africair /etc/logrotate.d/africair
+sudo logrotate --debug /etc/logrotate.d/africair
+```
+
+The site file defines `log_format` outside the `server` block; Ubuntu includes
+`sites-enabled/*` within nginx's `http` context. Security headers are repeated
+in locations that set cache headers because those locations do not inherit the
+server's `add_header` directives. Missing assets and missing version metadata
+return 404 instead of the SPA HTML. This configuration serves the static site;
+API proxying is configured separately in B8.
+
+After deploying a web artifact, verify the running site:
+
+```bash
+curl -fsS http://localhost/healthz
+curl -fsSI http://localhost/
+curl -fsSI http://localhost/index.html
+curl -fsSI http://localhost/version.json
+curl -fsS http://localhost/version.json | jq .commit
+sudo tail -n 1 /var/log/nginx/africair.access.json | jq .
+```
+
+Check an actual `/assets/` URL from the page source for immutable caching and
+all four security headers. In browser DevTools, check for CSP violations while
+loading Google Fonts and downloading a booking PDF. Port 80 must also be allowed
+in the EC2 security group for access using the instance's public IP.
+
 **Stretch:** HTTPS with Let's Encrypt (`certbot --nginx`) on a domain or a free `nip.io`/`sslip.io` hostname.
 
 ### B6. Health monitoring with systemd
